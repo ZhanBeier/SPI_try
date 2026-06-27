@@ -1,0 +1,18 @@
+dependencies:
+  espressif/esp_linenoise:
+    component_hash: 40198098794836fb85dac475fac6bb8f6adc0a27ecaebc6b53f16b20c7c0da51
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.4
+  idf:
+    source:
+      type: idf
+    version: 5.4.1
+direct_dependencies:
+- espressif/esp_linenoise
+- idf
+manifest_hash: aa1e33f30c1976da7a9ebc8cbb1fd830b85d9abc5dac5fdaa7c4074b42161bd2
+target: esp32s3
+version: 2.0.0
