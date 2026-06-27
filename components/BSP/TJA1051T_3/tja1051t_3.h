@@ -8,7 +8,7 @@
 /* ---- 硬件参数 ---- */
 #define TJA1051T_3_TX_PIN 1
 #define TJA1051T_3_RX_PIN 2
-#define TJA1051T_3_BITRATE 500000
+#define TJA1051T_3_BITRATE 250000
 
 /* ---- API ---- */
 esp_err_t tja1051t_3_init(void);

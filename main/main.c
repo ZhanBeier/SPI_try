@@ -3,7 +3,7 @@
  * @brief     基于ESP32S3的BMS主控测试，本版本基于第一块测试板
  * @author    Bear Zhan
  * @date      2026-06-27
- * @version   V0.4
+ * @version   V0.5
  *
  * @description
  *   通过 I²C 通信读取 ADS1115 四通道电压值：
@@ -26,6 +26,7 @@
  */
 #include <stdio.h>
 #include <math.h>
+// #include <string.h>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -33,6 +34,7 @@
 #include "ads1115.h"
 #include "tja1051t_3.h"
 #include "ltc6820.h"
+// #include "linenoise.h"
 
 #define NTC_R25 10000.0f
 #define NTC_B 3950.0f
