@@ -77,9 +77,6 @@ esp_err_t ads1115_init(void)
 
 int16_t ads1115_read_channel(int ch)
 {
-    ads1115_write_config(channels[ch].config & 0x7FFF);
-    vTaskDelay(pdMS_TO_TICKS(10));
-
     ads1115_write_config(channels[ch].config);
     vTaskDelay(pdMS_TO_TICKS(10));
 

@@ -1,11 +1,13 @@
 set(src_dirs
     ADS1115
     TJA1051T_3
+    LTC6820
 )
 
 set(include_dirs
     ADS1115
     TJA1051T_3
+    LTC6820
 )
 
 set(requires
