@@ -1,0 +1,16 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.extensionActivationMode": "always",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.portWin": "COM11",
+  "idf.currentSetup": "C:\\Users\\ZZZBear\\esp\\v5.4.1\\esp-idf",
+  "idf.espIdfPath": "C:/Users/ZZZBear/esp/v5.4.1/esp-idf",
+  "idf.toolsPath": "C:/Users/ZZZBear/.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "idf.flashType": "UART",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+}
