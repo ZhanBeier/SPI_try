@@ -35,6 +35,7 @@
 #include "tja1051t_3.h"
 #include "ltc6820.h"
 #include "cmd_line.h"
+#include "driver/usb_serial_jtag.h"
 
 #define NTC_R25 10000.0f
 #define NTC_B 3950.0f
@@ -136,13 +137,23 @@ static void led_toggle_task(void *arg)
 void app_main(void)
 {
     static const char *TAG = "main";
+
+    /* 先手动装 USB Serial/JTAG 驱动，让 usb_serial_jtag_read_bytes 可用 */
+    usb_serial_jtag_driver_config_t usj_cfg = {
+        .tx_buffer_size = 1024,
+        .rx_buffer_size = 1024,
+    };
+    usb_serial_jtag_driver_install(&usj_cfg);
+
     ESP_LOGI(TAG, "ADS1115 4-Channel Reader");
     ads1115_init();
     tja1051t_3_init();
     ltc6820_init();
 
-    xTaskCreate(adcread_task, "adcread", 4096, NULL, 5, NULL);
+    // xTaskCreate(adcread_task, "adcread", 4096, NULL, 5, NULL);
     // xTaskCreate(spi_test_task, "spi_test", 4096, NULL, 5, NULL);
-    // xTaskCreate(led_toggle_task, "led_toggle", 4096, NULL, 5, NULL);
+
+    ESP_LOGI(TAG, "Before cmd_line_start");
     cmd_line_start();
+    ESP_LOGI(TAG, "After cmd_line_start");
 }

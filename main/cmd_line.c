@@ -1,5 +1,3 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "cmd_line.h"
 #include "esp_linenoise.h"
 #include "esp_log.h"
@@ -7,6 +5,9 @@
 #include "tja1051t_3.h"
 #include "ltc6820.h"
 #include "driver/gpio.h"
+#include "driver/usb_serial_jtag.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -44,7 +45,6 @@ typedef struct
     cmd_func_t func;
 } cmd_t;
 
-/* 前向声明 */
 static void cmd_help(int argc, char *argv[]);
 static void cmd_adc(int argc, char *argv[]);
 static void cmd_temp(int argc, char *argv[]);
@@ -78,19 +78,17 @@ static void cmd_help(int argc, char *argv[])
 static void cmd_adc(int argc, char *argv[])
 {
     int ch_start = 0, ch_end = 4;
-
     if (argc >= 2)
     {
         int ch = atoi(argv[1]);
         if (ch < 0 || ch > 3)
         {
-            printf("Invalid channel: %s (valid: 0-3)\n", argv[1]);
+            printf("Invalid channel: %s\n", argv[1]);
             return;
         }
         ch_start = ch;
         ch_end = ch + 1;
     }
-
     for (int ch = ch_start; ch < ch_end; ch++)
     {
         int16_t raw = ads1115_read_channel(ch);
@@ -104,11 +102,9 @@ static void cmd_temp(int argc, char *argv[])
 {
     int16_t raw_vcc = ads1115_read_channel(ADS1115_CH_AIN2);
     int16_t raw_ntc = ads1115_read_channel(ADS1115_CH_AIN3);
-
     float vcc = (float)raw_vcc * ads1115_get_channel_info(ADS1115_CH_AIN2)->fsr / 32768.0f;
     float vntc = (float)raw_ntc * ads1115_get_channel_info(ADS1115_CH_AIN3)->fsr / 32768.0f;
     float temp = ntc_calc_temperature(vntc, vcc);
-
     printf("  VCC_3V3: %.4f V  NTC: %.4f V  Temp: %.1f C\n", vcc, vntc, temp);
 }
 
@@ -120,16 +116,13 @@ static void cmd_can_send(int argc, char *argv[])
         printf("Example: can 1234 AB CD EF\n");
         return;
     }
-
     uint32_t id = (uint32_t)strtoul(argv[1], NULL, 16);
     uint8_t data[8] = {0};
     uint8_t len = argc - 2;
     if (len > 8)
         len = 8;
-
     for (int i = 0; i < len; i++)
         data[i] = (uint8_t)strtoul(argv[i + 2], NULL, 16);
-
     esp_err_t ret = tja1051t_3_send(id, data, len, true);
     printf("CAN TX ID=0x%08lX [%d bytes]: ", (unsigned long)id, len);
     for (int i = 0; i < len; i++)
@@ -171,7 +164,6 @@ static void process_line(char *line)
 
     char *argv[12];
     int argc = 0;
-
     argv[argc++] = line;
     char *p = line;
     while (*p && argc < 12)
@@ -190,7 +182,6 @@ static void process_line(char *line)
             p++;
         }
     }
-
     for (const cmd_t *c = cmd_table; c->name != NULL; c++)
     {
         if (strcmp(argv[0], c->name) == 0)
@@ -203,10 +194,39 @@ static void process_line(char *line)
 }
 
 /* ================================================================
- *  esp_linenoise 实例管理
+ *  esp_linenoise + USB Serial/JTAG
  * ================================================================ */
+static esp_linenoise_handle_t s_linenoise_handle = NULL;
+static int s_read_timeout_ms = 5000;
+
+static ssize_t blocking_read(int fd, void *buf, size_t count)
+{
+    (void)fd;
+    int n = usb_serial_jtag_read_bytes(buf, count, pdMS_TO_TICKS(s_read_timeout_ms));
+    return (n >= 0) ? n : 0;
+}
+
+static ssize_t blocking_write(int fd, const void *buf, size_t count)
+{
+    (void)fd;
+    int n = usb_serial_jtag_write_bytes(buf, count, pdMS_TO_TICKS(1000));
+    return (n >= 0) ? n : 0;
+}
+
+/* 排空 USB 接收缓冲区 */
+static void flush_usb_rx(void)
+{
+    uint8_t tmp[128];
+    while (usb_serial_jtag_read_bytes(tmp, sizeof(tmp), pdMS_TO_TICKS(10)) > 0)
+    {
+        /* discard */
+    }
+}
+
 static esp_err_t linenoise_init(void)
 {
+    s_read_timeout_ms = 5000;
+
     esp_linenoise_config_t config;
     esp_linenoise_get_instance_config_default(&config);
 
@@ -216,6 +236,8 @@ static esp_err_t linenoise_init(void)
     config.allow_dumb_mode = true;
     config.in_fd = STDIN_FILENO;
     config.out_fd = STDOUT_FILENO;
+    config.read_bytes_cb = blocking_read;
+    config.write_bytes_cb = blocking_write;
 
     esp_linenoise_handle_t handle = NULL;
     esp_err_t ret = esp_linenoise_create_instance(&config, &handle);
@@ -225,47 +247,22 @@ static esp_err_t linenoise_init(void)
         return ret;
     }
 
-    esp_linenoise_set_dumb_mode(handle, true);
+    /* probe 期间产生的残留转义序列全部清掉 */
+    flush_usb_rx();
 
-    extern esp_linenoise_handle_t s_linenoise_handle;
+    s_read_timeout_ms = 100;
     s_linenoise_handle = handle;
-
     return ESP_OK;
-}
-
-static esp_linenoise_handle_t linenoise_get_handle(void)
-{
-    extern esp_linenoise_handle_t s_linenoise_handle;
-    return s_linenoise_handle;
-}
-
-static void linenoise_cleanup(void)
-{
-    esp_linenoise_handle_t handle = linenoise_get_handle();
-    if (handle)
-    {
-        esp_linenoise_delete_instance(handle);
-    }
 }
 
 /* ================================================================
  *  任务入口
  * ================================================================ */
-esp_linenoise_handle_t s_linenoise_handle = NULL;
-
 static void cmd_line_task(void *arg)
 {
     if (linenoise_init() != ESP_OK)
     {
         ESP_LOGE(TAG, "linenoise init failed");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    esp_linenoise_handle_t handle = linenoise_get_handle();
-    if (!handle)
-    {
-        ESP_LOGE(TAG, "handle is NULL");
         vTaskDelete(NULL);
         return;
     }
@@ -277,11 +274,9 @@ static void cmd_line_task(void *arg)
            "========================================\n\n");
 
     size_t max_len = 0;
-    esp_err_t ret = esp_linenoise_get_max_cmd_line_length(handle, &max_len);
-    ESP_LOGI(TAG, "get_max_line_len ret=%d, max_len=%d", ret, (int)max_len);
+    esp_linenoise_get_max_cmd_line_length(s_linenoise_handle, &max_len);
 
     char *line = malloc(max_len);
-    ESP_LOGI(TAG, "malloc(%d) -> %p", (int)max_len, line);
     if (!line)
     {
         ESP_LOGE(TAG, "Failed to allocate line buffer");
@@ -291,17 +286,16 @@ static void cmd_line_task(void *arg)
 
     while (1)
     {
-        ret = esp_linenoise_get_line(handle, line, max_len);
-        ESP_LOGI(TAG, "get_line ret=%d, line=[%s]", ret, line);
+        esp_err_t ret = esp_linenoise_get_line(s_linenoise_handle, line, max_len);
         if (ret == ESP_OK)
         {
-            esp_linenoise_history_add(handle, line);
+            esp_linenoise_history_add(s_linenoise_handle, line);
             process_line(line);
         }
     }
 
     free(line);
-    esp_linenoise_delete_instance(handle);
+    esp_linenoise_delete_instance(s_linenoise_handle);
 }
 
 void cmd_line_start(void)

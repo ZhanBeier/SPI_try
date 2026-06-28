@@ -57,7 +57,7 @@ esp_err_t tja1051t_3_send(uint32_t id, const uint8_t *data, uint8_t len, bool ex
     if (data && len > 0)
         memcpy(msg.data, data, len);
 
-    esp_err_t ret = twai_transmit(&msg, pdMS_TO_TICKS(100));
+    esp_err_t ret = twai_transmit(&msg, pdMS_TO_TICKS(20));
     if (ret != ESP_OK)
     {
         ESP_LOGW(TAG, "TX failed: %s", esp_err_to_name(ret));
