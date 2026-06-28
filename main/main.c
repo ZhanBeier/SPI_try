@@ -26,7 +26,6 @@
  */
 #include <stdio.h>
 #include <math.h>
-// #include <string.h>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,7 +33,7 @@
 #include "ads1115.h"
 #include "tja1051t_3.h"
 #include "ltc6820.h"
-// #include "linenoise.h"
+#include "cmd_line.h"
 
 #define NTC_R25 10000.0f
 #define NTC_B 3950.0f
@@ -135,13 +134,15 @@ static void led_toggle_task(void *arg)
 
 void app_main(void)
 {
+    vTaskDelay(pdMS_TO_TICKS(500));
     static const char *TAG = "main";
-    ESP_LOGI(TAG, "ADS1115 4-Channel Reader");
+    ESP_LOGI(TAG, "BMS initializing...");
     ads1115_init();
     tja1051t_3_init();
     ltc6820_init();
 
     xTaskCreate(adcread_task, "adcread", 4096, NULL, 5, NULL);
-    // xTaskCreate(spi_test_task, "spi_test", 4096, NULL, 5, NULL);
-    // xTaskCreate(led_toggle_task, "led_toggle", 4096, NULL, 5, NULL);
+    xTaskCreate(spi_test_task, "spi_test", 4096, NULL, 5, NULL);
+    xTaskCreate(led_toggle_task, "led_toggle", 4096, NULL, 5, NULL);
+    cmd_line_start();
 }
