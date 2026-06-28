@@ -32,6 +32,7 @@ idf.py -p COM11 flash monitor
 - ADS1115 四通道电压采集（电位器/5V/3.3V/NTC温度）
 - CAN 扩展帧发送采集数据（ID: 0x1234）
 - LTC6820 SPI 通信测试
+- 简单的命令行实现（具体请在串口0上发送"help"查询）
 
 ## 依赖
 
