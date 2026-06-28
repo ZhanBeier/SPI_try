@@ -4,49 +4,13 @@
 #include "tja1051t_3.h"
 #include "ltc6820.h"
 #include "driver/gpio.h"
-#include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "uart_comm.h"
+#include "ntc_calc.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <math.h>
-#include <stdarg.h>
-
-static const char *TAG = "cmd_line";
-
-/* ================================================================
- *  NTC 计算
- * ================================================================ */
-#define NTC_R25 10000.0f
-#define NTC_B 3950.0f
-#define NTC_R_FIXED 10000.0f
-#define NTC_T0_K 298.15f
-
-static float ntc_calc_temperature(float v_ntc, float vcc)
-{
-    if (v_ntc <= 0.0f || v_ntc >= vcc)
-        return -999.0f;
-    float r_ntc = v_ntc * NTC_R_FIXED / (vcc - v_ntc);
-    float t_k = 1.0f / (1.0f / NTC_T0_K + (1.0f / NTC_B) * logf(r_ntc / NTC_R25));
-    return t_k - 273.15f;
-}
-
-#define CMD_UART_PORT UART_NUM_0
-#define CMD_UART_TX 43
-#define CMD_UART_RX 44
-#define CMD_UART_BUF 256
-
-static void cmd_print(const char *fmt, ...)
-{
-    char buf[256];
-    va_list args;
-    va_start(args, fmt);
-    int len = vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (len > 0)
-        uart_write_bytes(CMD_UART_PORT, buf, len);
-}
 
 /* ================================================================
  *  命令定义
@@ -79,16 +43,14 @@ static const cmd_t cmd_table[] = {
 };
 
 /* ================================================================
- *  命令实现（全部保留，不改）
+ *  命令实现
  * ================================================================ */
 static void cmd_help(int argc, char *argv[])
 {
-    cmd_print("\n");
+    uart_comm_print("\n");
     for (const cmd_t *c = cmd_table; c->name != NULL; c++)
-    {
-        cmd_print("  %-8s %-20s %s\n", c->name, c->args_desc, c->help);
-    }
-    cmd_print("\n");
+        uart_comm_print("  %-8s %-20s %s\n", c->name, c->args_desc, c->help);
+    uart_comm_print("\n");
 }
 
 static void cmd_adc(int argc, char *argv[])
@@ -99,7 +61,7 @@ static void cmd_adc(int argc, char *argv[])
         int ch = atoi(argv[1]);
         if (ch < 0 || ch > 3)
         {
-            cmd_print("Invalid channel: %s\n", argv[1]);
+            uart_comm_print("Invalid channel: %s\n", argv[1]);
             return;
         }
         ch_start = ch;
@@ -110,7 +72,7 @@ static void cmd_adc(int argc, char *argv[])
         int16_t raw = ads1115_read_channel(ch);
         const ads1115_channel_t *info = ads1115_get_channel_info(ch);
         float voltage = (float)raw * info->fsr / 32768.0f;
-        cmd_print("  %s  Raw: %6d  Voltage: %.4f V\n", info->name, raw, voltage);
+        uart_comm_print("  %s  Raw: %6d  Voltage: %.4f V\n", info->name, raw, voltage);
     }
 }
 
@@ -121,15 +83,15 @@ static void cmd_temp(int argc, char *argv[])
     float vcc = (float)raw_vcc * ads1115_get_channel_info(ADS1115_CH_AIN2)->fsr / 32768.0f;
     float vntc = (float)raw_ntc * ads1115_get_channel_info(ADS1115_CH_AIN3)->fsr / 32768.0f;
     float temp = ntc_calc_temperature(vntc, vcc);
-    cmd_print("  VCC_3V3: %.4f V  NTC: %.4f V  Temp: %.1f C\n", vcc, vntc, temp);
+    uart_comm_print("  VCC_3V3: %.4f V  NTC: %.4f V  Temp: %.1f C\n", vcc, vntc, temp);
 }
 
 static void cmd_can_send(int argc, char *argv[])
 {
     if (argc < 3)
     {
-        cmd_print("Usage: can <id_hex> <byte1_hex> [byte2_hex ...]\n");
-        cmd_print("Example: can 1234 AB CD EF\n");
+        uart_comm_print("Usage: can <id_hex> <byte1_hex> [byte2_hex ...]\n");
+        uart_comm_print("Example: can 1234 AB CD EF\n");
         return;
     }
     uint32_t id = (uint32_t)strtoul(argv[1], NULL, 16);
@@ -140,36 +102,36 @@ static void cmd_can_send(int argc, char *argv[])
     for (int i = 0; i < len; i++)
         data[i] = (uint8_t)strtoul(argv[i + 2], NULL, 16);
     esp_err_t ret = tja1051t_3_send(id, data, len, true);
-    cmd_print("CAN TX ID=0x%08lX [%d bytes]: ", (unsigned long)id, len);
+    uart_comm_print("CAN TX ID=0x%08lX [%d bytes]: ", (unsigned long)id, len);
     for (int i = 0; i < len; i++)
-        cmd_print("%02X ", data[i]);
-    cmd_print("  %s\n", ret == ESP_OK ? "OK" : "FAIL");
+        uart_comm_print("%02X ", data[i]);
+    uart_comm_print("  %s\n", ret == ESP_OK ? "OK" : "FAIL");
 }
 
 static void cmd_led(int argc, char *argv[])
 {
     gpio_set_level(GPIO_NUM_4, !gpio_get_level(GPIO_NUM_4));
-    cmd_print("GPIO4 -> %d\n", gpio_get_level(GPIO_NUM_4));
+    uart_comm_print("GPIO4 -> %d\n", gpio_get_level(GPIO_NUM_4));
 }
 
 static void cmd_info(int argc, char *argv[])
 {
-    cmd_print("\n");
-    cmd_print("  Board     : ESP32-S3 (BMS Test V0.5)\n");
-    cmd_print("  ADS1115   : I2C  SDA=%d SCL=%d  Addr=0x48\n",
-              ADS1115_I2C_SDA_PIN, ADS1115_I2C_SCL_PIN);
-    cmd_print("  CAN       : TX=%d  RX=%d  (TWAI)\n",
-              TJA1051T_3_TX_PIN, TJA1051T_3_RX_PIN);
-    cmd_print("  LTC6820   : SPI CLK=%d MOSI=%d MISO=%d\n",
-              LTC6820_SPI_CLK_PIN, LTC6820_SPI_MOSI_PIN, LTC6820_SPI_MISO_PIN);
-    cmd_print("  LTC6820   : CS5=%d  CS6=%d\n",
-              LTC6820_CS5_PIN, LTC6820_CS6_PIN);
-    cmd_print("  Test LED  : GPIO4\n");
-    cmd_print("\n");
+    uart_comm_print("\n");
+    uart_comm_print("  Board     : ESP32-S3 (BMS Test V0.5)\n");
+    uart_comm_print("  ADS1115   : I2C  SDA=%d SCL=%d  Addr=0x48\n",
+                   ADS1115_I2C_SDA_PIN, ADS1115_I2C_SCL_PIN);
+    uart_comm_print("  CAN       : TX=%d  RX=%d  (TWAI)\n",
+                   TJA1051T_3_TX_PIN, TJA1051T_3_RX_PIN);
+    uart_comm_print("  LTC6820   : SPI CLK=%d MOSI=%d MISO=%d\n",
+                   LTC6820_SPI_CLK_PIN, LTC6820_SPI_MOSI_PIN, LTC6820_SPI_MISO_PIN);
+    uart_comm_print("  LTC6820   : CS5=%d  CS6=%d\n",
+                   LTC6820_CS5_PIN, LTC6820_CS6_PIN);
+    uart_comm_print("  Test LED  : GPIO4\n");
+    uart_comm_print("\n");
 }
 
 /* ================================================================
- *  命令解析（保留，不改）
+ *  命令解析
  * ================================================================ */
 static void process_line(char *line)
 {
@@ -206,47 +168,31 @@ static void process_line(char *line)
             return;
         }
     }
-    cmd_print("Unknown command: '%s'. Type 'help' for available commands.\n", argv[0]);
+    uart_comm_print("Unknown command: '%s'. Type 'help' for available commands.\n", argv[0]);
 }
 
 /* ================================================================
- *  UART 命令行（替代 linenoise）
+ *  命令行任务
  * ================================================================ */
-
-static void uart_cmd_init(void)
-{
-    uart_config_t cfg = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-
-    uart_driver_install(CMD_UART_PORT, 1024, 256, 0, NULL, 0);
-    uart_param_config(CMD_UART_PORT, &cfg);
-    uart_set_pin(CMD_UART_PORT, CMD_UART_TX, CMD_UART_RX,
-                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-}
+#define CMD_LINE_BUF 256
 
 static void uart_cmd_task(void *arg)
 {
-    uart_cmd_init();
+    uart_comm_init();
 
-    uint8_t line[CMD_UART_BUF];
+    uint8_t line[CMD_LINE_BUF];
     int pos = 0;
 
-    cmd_print("\n"
-              "========================================\n"
-              "  BMS Test Console (ESP32-S3 V0.5)\n"
-              "  Type 'help' for available commands.\n"
-              "========================================\n\n");
+    uart_comm_print("\n"
+                   "========================================\n"
+                   "  BMS Test Console (ESP32-S3 V0.5)\n"
+                   "  Type 'help' for available commands.\n"
+                   "========================================\n\n");
 
     while (1)
     {
         uint8_t c;
-        if (uart_read_bytes(CMD_UART_PORT, &c, 1, pdMS_TO_TICKS(100)) > 0)
+        if (uart_comm_read_byte(&c, 100) > 0)
         {
             if (c == '\r' || c == '\n')
             {
@@ -262,16 +208,15 @@ static void uart_cmd_task(void *arg)
                 if (pos > 0)
                 {
                     pos--;
-                    const char *del = "\b \b";
-                    uart_write_bytes(CMD_UART_PORT, del, strlen(del));
+                    uart_comm_print("\b \b");
                 }
             }
             else
             {
-                if (pos < CMD_UART_BUF - 1)
+                if (pos < CMD_LINE_BUF - 1)
                 {
                     line[pos++] = c;
-                    uart_write_bytes(CMD_UART_PORT, &c, 1);
+                    uart_comm_print("%c", c);
                 }
             }
         }
