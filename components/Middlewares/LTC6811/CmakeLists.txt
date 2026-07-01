@@ -1,0 +1,5 @@
+idf_component_register(
+    SRCS "LTC6804-1.c"
+    INCLUDE_DIRS "."
+    REQUIRES driver BSP
+)

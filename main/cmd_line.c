@@ -31,6 +31,7 @@ static void cmd_temp(int argc, char *argv[]);
 static void cmd_can_send(int argc, char *argv[]);
 static void cmd_led(int argc, char *argv[]);
 static void cmd_info(int argc, char *argv[]);
+static void cmd_io(int argc, char *argv[]);
 
 static const cmd_t cmd_table[] = {
     {"help", "", "Show available commands", cmd_help},
@@ -39,6 +40,7 @@ static const cmd_t cmd_table[] = {
     {"can", "id b1 [b2..b8]", "Send CAN frame (hex bytes)", cmd_can_send},
     {"led", "", "Toggle test LED (GPIO4)", cmd_led},
     {"info", "", "Show hardware pin info", cmd_info},
+    {"io", "pin h/l", "Set GPIO pin high/low (e.g. io 4 h)", cmd_io},
     {NULL, NULL, NULL, NULL},
 };
 
@@ -119,15 +121,62 @@ static void cmd_info(int argc, char *argv[])
     uart_comm_print("\n");
     uart_comm_print("  Board     : ESP32-S3 (BMS Test V0.5)\n");
     uart_comm_print("  ADS1115   : I2C  SDA=%d SCL=%d  Addr=0x48\n",
-                   ADS1115_I2C_SDA_PIN, ADS1115_I2C_SCL_PIN);
+                    ADS1115_I2C_SDA_PIN, ADS1115_I2C_SCL_PIN);
     uart_comm_print("  CAN       : TX=%d  RX=%d  (TWAI)\n",
-                   TJA1051T_3_TX_PIN, TJA1051T_3_RX_PIN);
+                    TJA1051T_3_TX_PIN, TJA1051T_3_RX_PIN);
     uart_comm_print("  LTC6820   : SPI CLK=%d MOSI=%d MISO=%d\n",
-                   LTC6820_SPI_CLK_PIN, LTC6820_SPI_MOSI_PIN, LTC6820_SPI_MISO_PIN);
+                    LTC6820_SPI_CLK_PIN, LTC6820_SPI_MOSI_PIN, LTC6820_SPI_MISO_PIN);
     uart_comm_print("  LTC6820   : CS5=%d  CS6=%d\n",
-                   LTC6820_CS5_PIN, LTC6820_CS6_PIN);
-    uart_comm_print("  Test LED  : GPIO4\n");
+                    LTC6820_CS5_PIN, LTC6820_CS6_PIN);
+    uart_comm_print("  Available GPIOs : IO4 IO5 IO6 IO7\n");
     uart_comm_print("\n");
+}
+
+static const gpio_num_t allowed_gpios[] = {GPIO_NUM_4, GPIO_NUM_5, GPIO_NUM_6, GPIO_NUM_7};
+
+static void cmd_io(int argc, char *argv[])
+{
+    if (argc < 3)
+    {
+        uart_comm_print("Usage: io <pin> <h|l>\n");
+        uart_comm_print("Allowed pins: 4, 5, 6, 7\n");
+        return;
+    }
+
+    int pin = atoi(argv[1]);
+    int valid = 0;
+    for (int i = 0; i < sizeof(allowed_gpios) / sizeof(allowed_gpios[0]); i++)
+    {
+        if (pin == allowed_gpios[i])
+        {
+            valid = 1;
+            break;
+        }
+    }
+    if (!valid)
+    {
+        uart_comm_print("Invalid pin: %s (allowed: 4, 5, 6, 7)\n", argv[1]);
+        return;
+    }
+
+    gpio_num_t gpio = (gpio_num_t)pin;
+
+    if (strcmp(argv[2], "h") == 0 || strcmp(argv[2], "H") == 0)
+    {
+        gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+        gpio_set_level(gpio, 1);
+        uart_comm_print("GPIO%d -> HIGH\n", pin);
+    }
+    else if (strcmp(argv[2], "l") == 0 || strcmp(argv[2], "L") == 0)
+    {
+        gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+        gpio_set_level(gpio, 0);
+        uart_comm_print("GPIO%d -> LOW\n", pin);
+    }
+    else
+    {
+        uart_comm_print("Unknown level: '%s' (use h or l)\n", argv[2]);
+    }
 }
 
 /* ================================================================
@@ -184,10 +233,10 @@ static void uart_cmd_task(void *arg)
     int pos = 0;
 
     uart_comm_print("\n"
-                   "========================================\n"
-                   "  BMS Test Console (ESP32-S3 V0.5)\n"
-                   "  Type 'help' for available commands.\n"
-                   "========================================\n\n");
+                    "========================================\n"
+                    "  BMS Test Console (ESP32-S3 V0.5)\n"
+                    "  Type 'help' for available commands.\n"
+                    "========================================\n\n");
 
     while (1)
     {

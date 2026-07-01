@@ -28,7 +28,7 @@ esp_err_t ltc6820_init(void)
         .miso_io_num = LTC6820_SPI_MISO_PIN,
         .mosi_io_num = LTC6820_SPI_MOSI_PIN,
         .sclk_io_num = LTC6820_SPI_CLK_PIN,
-        .max_transfer_sz = 64,
+        .max_transfer_sz = 256,
     };
 
     esp_err_t ret = spi_bus_initialize(LTC6820_SPI_HOST, &bus_cfg, SPI_DMA_DISABLED);

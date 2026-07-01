@@ -2,7 +2,7 @@
  * @file      main.c
  * @brief     基于ESP32S3的BMS主控测试，本版本基于第一块测试板
  * @author    Bear Zhan
- * @date      2026-06-27
+ * @date      2026-06-28
  * @version   V0.5
  *
  * @description
@@ -114,35 +114,23 @@ static void spi_test_task(void *arg)
     }
 }
 
-static void led_toggle_task(void *arg)
-{
-    static const char *TAG = "main_togglepin";
-    gpio_reset_pin(GPIO_NUM_4);
-    // 由于IO_MATRIX，必须设置为GPIO_MODE_INPUT_OUTPUT才能读回当前电平
-    gpio_set_direction(GPIO_NUM_4, GPIO_MODE_INPUT_OUTPUT);
-    // 显示关闭上下拉
-    gpio_pullup_dis(GPIO_NUM_4);
-    gpio_pulldown_dis(GPIO_NUM_4);
-
-    while (1)
-    {
-        ESP_LOGI(TAG, "Toggle IO PIN4.\n");
-        gpio_set_level(GPIO_NUM_4, !gpio_get_level(GPIO_NUM_4));
-        vTaskDelay(pdMS_TO_TICKS(250));
-    }
-}
-
 void app_main(void)
 {
-    vTaskDelay(pdMS_TO_TICKS(500));
     static const char *TAG = "main";
     ESP_LOGI(TAG, "BMS initializing...");
+    /* 初始化前确保所有可控 GPIO 为低电平 */
+    gpio_num_t safe_gpios[] = {GPIO_NUM_4, GPIO_NUM_5, GPIO_NUM_6, GPIO_NUM_7};
+    for (int i = 0; i < sizeof(safe_gpios) / sizeof(safe_gpios[0]); i++)
+    {
+        gpio_reset_pin(safe_gpios[i]);
+        gpio_set_direction(safe_gpios[i], GPIO_MODE_OUTPUT);
+        gpio_set_level(safe_gpios[i], 0);
+    }
     ads1115_init();
     tja1051t_3_init();
     ltc6820_init();
 
     xTaskCreate(adcread_task, "adcread", 4096, NULL, 5, NULL);
     xTaskCreate(spi_test_task, "spi_test", 4096, NULL, 5, NULL);
-    xTaskCreate(led_toggle_task, "led_toggle", 4096, NULL, 5, NULL);
     cmd_line_start();
 }
